@@ -162,6 +162,8 @@ services:
       container_name: dataverse_superset
       ports:
         - "4480:4480"
+      environment:
+        - "DATAVERSE_SUPERSET_GIT=https://github.com/SSHOC/dataverse-superset.git"
       depends_on:
         - superset
 

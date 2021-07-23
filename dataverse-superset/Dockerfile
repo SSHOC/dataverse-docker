@@ -1,6 +1,5 @@
 FROM adoptopenjdk/openjdk11:jdk-11.0.11_9-alpine
 
-ARG VERSION=0.20.2
 ENV DATAVERSE_SUPERSET_GIT=https://github.com/SSHOC/dataverse-superset.git
 
 WORKDIR /opt/dataverse-superset
