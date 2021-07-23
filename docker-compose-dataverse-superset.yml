@@ -1,0 +1,177 @@
+version: '3'
+services:
+    reverse-proxy:
+    # The official v2 Traefik docker image
+      image: traefik:v2.2
+    # Enables the web UI and tells Traefik to listen to docker
+      command:
+        - "--api.insecure=true"
+        - "--providers.docker=true"
+        - "--providers.docker.exposedbydefault=false"
+        - --providers.docker.network=traefik
+        - "--entrypoints.web.address=:80"
+        - "--entrypoints.websecure.address=:443"
+        - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+        - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+        - "--entrypoints.web.http.redirections.entryPoint.priority=10" # disable permanent forwarding for every route
+        - "--certificatesresolvers.myresolver.acme.tlschallenge=true" # <== Enable TLS-ALPN-01 to generate and renew ACME certs
+        - "--certificatesresolvers.myresolver.acme.email=${useremail}"
+        - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+        - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      ports:
+        # The HTTP port
+        - "80:80"
+        # The HTTPS port
+        - "443:443"
+        # The Web UI (enabled by --api.insecure=true)
+        - "8089:8080"
+      volumes:
+        # So that Traefik can listen to the Docker events
+        - /var/run/docker.sock:/var/run/docker.sock
+        # volume to store letsencrypt certificates
+        - "./letsencrypt:/letsencrypt"
+      networks:
+        - traefik
+
+
+    postgres:
+      networks:
+        - traefik
+      container_name: postgres
+      ports:
+        - "5433:5432"
+      image: postgres:10.13
+      restart: unless-stopped
+
+      environment:
+        - "LC_ALL=C.UTF-8"
+        - "POSTGRES_DB"
+        - "POSTGRES_USER"
+        - "POSTGRES_PASSWORD"
+        - "POSTGRES_PORT"
+      volumes:
+        - ./database-data:/var/lib/postgresql/data/ # persist data even if container shuts down
+
+    solr:
+      networks:
+        - traefik
+      image: ekoindarto/solr-cvm:latest
+      container_name: solr
+      privileged: true
+      ports:
+        - "8983:8983"
+      environment:
+        - "SOLR_HOST=solr"
+        - "SOLR_PORT=8983"
+        - "SOLR_JAVA_MEM=-Xms1g -Xmx1g"
+      volumes:
+        - solr-data:/opt/solr/server/solr/collection1/data
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.solr.rule=Host(`solr.${traefikhost}`)"
+        - "traefik.http.services.solr.loadbalancer.server.port=8983"
+        - "traefik.http.routers.solr.tls=true"
+        - "traefik.http.routers.solr.tls.certresolver=myresolver"  
+
+    whoami:
+      networks:
+        - traefik
+      image: "containous/whoami"
+      container_name: "whoami"
+      labels:
+        - "traefik.enable=true"
+          # - "traefik.http.routers.whoami.entrypoints=web"
+        - "traefik.http.routers.whoami.rule=Host(`whoami.${traefikhost}`)"
+        - "traefik.http.routers.whoami.tls=true"
+        - "traefik.http.routers.whoami.tls.certresolver=myresolver"  
+
+    dataverse:
+      networks:
+        - traefik
+      image: coronawhy/dataverse:5.5
+      container_name: dataverse
+      privileged: true
+      user:
+        "root"
+      ports:
+        #- "443:443"
+        - "4848:4848"
+        - "8085:8080"
+      environment:
+        - "CVM_SERVER_NAME=CESSDA" #Optional
+        - "DATAVERSE_DB_HOST"
+        - "DATAVERSE_DB_USER"
+        - "DATAVERSE_DB_PASSWORD"
+        - "DATAVERSE_DB_NAME"
+        - "DATAVERSE_SERVICE_HOST"
+        - "DATAVERSE_URL"
+        - "SOLR_SERVICE_HOST"
+        - "SOLR_SERVICE_PORT"
+        - "CVM_SERVER_URL=https://ns.${traefikhost}"
+        - "CVM_TSV_SOURCE=https://github.com/IQSS/dataverse-docker/releases/download/5.3-cv/cvocdemo.tsv"
+        - "1WAR_FILE=https://github.com/IQSS/dataverse-docker/releases/download/5.3-cv/dataverse-5.3-cv.war"
+        - "WAR_FILE=https://github.com/IQSS/dataverse/releases/download/v5.3/dataverse-5.3.war"
+        - "CVM_SQL=https://github.com/IQSS/dataverse-docker/releases/download/5.3-cv/cv-update.sql"
+        - "CVM_CONFIG=https://github.com/IQSS/dataverse-docker/releases/download/5.3-cv/cvoc-conf.json"
+        - "LANG=en"
+        - "cvManager=http://"
+        - "BUNDLEPROPERTIES=Bundle.properties"
+        - "ADMIN_EMAIL=admin@localhost"
+        - "MAIL_SERVER=mailrelay"
+        - "SOLR_LOCATION=solr:8983"
+        - "POSTGRES_SERVER"
+        - "POSTGRES_PORT"
+        - "POSTGRES_DATABASE"
+        - "POSTGRES_USER"
+        - "POSTGRES_PASSWORD"
+        - "PGPASSWORD"
+        - "TWORAVENS_LOCATION=NOT INSTALLED"
+        - "RSERVE_HOST=localhost"
+        - "RSERVE_PORT=6311"
+        - "RSERVE_USER=rserve"
+        - "RSERVE_PASSWORD=rserve"
+        - "JVM_OPTS='-Xmx1g -Xms1g -XX:MaxPermSize=2g -XX:PermSize=2g'"
+      depends_on:
+        - postgres
+        - solr
+      volumes:
+        - ./secrets:/secrets
+        - ./data:/data
+        - ./docroot:/docroot
+      #  - dataverse-data:/usr/local/payara5/glassfish/domains/domain1/autodeploy
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.dataverse.rule=Host(`www.${traefikhost}`)"
+        - "traefik.http.services.dataverse.loadbalancer.server.port=8080"
+        - "traefik.http.routers.dataverse.tls=true"
+        - "traefik.http.routers.dataverse.tls.certresolver=myresolver"
+    superset:
+      networks:
+        - traefik
+      image: ekoindarto/superset:1.2
+      container_name: superset
+      ports:
+        - "8088:8088"
+      depends_on:
+        - dataverse
+
+    dataverse-superset:
+      networks:
+        - traefik
+      image: ekoindarto/dataverse-superset:0.1
+      container_name: dataverse_superset
+      ports:
+        - "4480:4480"
+      environment:
+        - "DATAVERSE_SUPERSET_GIT=https://github.com/SSHOC/dataverse-superset.git"
+      depends_on:
+        - superset
+
+volumes:
+  database-data:
+  solr-data:
+  dataverse-data:
+
+networks:
+  traefik:
+    external: true
