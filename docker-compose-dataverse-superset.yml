@@ -145,6 +145,16 @@ services:
         - "traefik.http.services.dataverse.loadbalancer.server.port=8080"
         - "traefik.http.routers.dataverse.tls=true"
         - "traefik.http.routers.dataverse.tls.certresolver=myresolver"
+    superset:
+      networks:
+        - traefik
+      image: ekoindarto/superset:1.2
+      container_name: superset
+      ports:
+        - "8088:8088"
+      depends_on:
+        - dataverse
+
     dataverse-superset:
       networks:
         - traefik
@@ -152,14 +162,8 @@ services:
       container_name: dataverse_superset
       ports:
         - "4480:4480"
-
-    superset:
-      networks:
-        - traefik
-      image: ekoindarto/superset:0.6
-      container_name: superset
-      ports:
-        - "8088:8088"
+      depends_on:
+        - superset
 
 volumes:
   database-data:
