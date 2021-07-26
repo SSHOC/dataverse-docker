@@ -152,6 +152,12 @@ services:
       container_name: superset
       ports:
         - "8088:8088"
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.superset.rule=Host(`superset.${traefikhost}`)"
+        - "traefik.http.services.superset.loadbalancer.server.port=8088"
+        - "traefik.http.routers.superset.tls=true"
+        - "traefik.http.routers.superset.tls.certresolver=myresolver"
       depends_on:
         - dataverse
 
@@ -164,6 +170,12 @@ services:
         - "4480:4480"
       environment:
         - "DATAVERSE_SUPERSET_GIT=https://github.com/SSHOC/dataverse-superset.git"
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.superingest.rule=Host(`superingest.${traefikhost}`)"
+        - "traefik.http.services.superingest.loadbalancer.server.port=4480"
+        - "traefik.http.routers.superingest.tls=true"
+        - "traefik.http.routers.superingest.tls.certresolver=myresolver"
       depends_on:
         - superset
 
